@@ -53,6 +53,6 @@ def health_check(response: Response):
         return{"status": "error", "message": "An internal server error occured."}
     
     finally:
-        if conn is not Nonel:
+        if conn is not None:
             conn.close()
             logging.info("Database connection closed")
