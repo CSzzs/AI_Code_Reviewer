@@ -3,8 +3,10 @@ import os
 
 import psycopg2
 import schemas
+import auth
 from dotenv import load_dotenv
 from fastapi import FastAPI, Response, status, Depends, HTTPException
+from fastapi.security import OAuth2PasswordRequestForm
 from psycopg2.extras import RealDictCursor
 from passlib.context import CryptContext
 from sqlalchemy.orm import sessionmaker
@@ -113,3 +115,31 @@ def register_user(user: schemas.UserCreate, db: Connection = Depends(get_db)):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Could not create user due to database error."
         )
+
+@app.post("/login", response_model=schemas.Token, tags=["Authentication"])
+def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Connection = Depends(get_db)):
+    """
+    Logs a user in by verifying their credentials and returning JWT token.
+    """
+    # 1. Finding the user by their email
+    logging.info(f"Login attempt for user: {form_data.username}")
+    db.execute("SELECT * FROM users WHERE email = %s", (form_data.username,))
+    user = db.fetchone()
+    
+    # 2. Check if user exists and if the Password is correct
+    if not user or not auth.verify_password(form_data.password, user['hashed_password']):
+        logging.warning(f"Failed logging attempt for user: {form_data.username}")
+        raise HTTPException(
+            status_code = status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect Email or Password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # 3. Creating the JWT token if user is valid
+    access_token = auth.create_access_token(
+        data={"sub": user['email'], "user_id":user['id']}
+    )
+    logging.info(f"Successfully login and token created for user:{form_data.username}")
+    
+    # 4. Return the token
+    return {"access_token": access_token, "token_type": "bearer"}
