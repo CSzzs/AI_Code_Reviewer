@@ -9,6 +9,7 @@ from fastapi import FastAPI, Response, status, Depends, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
 from psycopg2.extras import RealDictCursor
 from passlib.context import CryptContext
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import Pool
 from sqlalchemy.engine.base import Connection
@@ -18,7 +19,7 @@ from sqlalchemy.engine.base import Connection
 
 # Configure Logging
 logging.basicConfig(level=logging.INFO,
-                    format='%(asctime)s - %(levelname)s -%(messages)s')
+                    format='%(asctime)s - %(levelname)s -%(message)s')
 
 # Load environment variables
 load_dotenv()
@@ -32,11 +33,11 @@ if not DATABASE_URL:
 # Create FastAPI application instance
 app = FastAPI(
     title="AI Code Reviewer API",
-    description="The backend service for the AI Code Review and refactoring assitant.",
+    description="The backend service for the AI Code Review and refactoring assistant.",
     version="0.1.0",
 )
 # ---Setup the password hashing---
-pwd_context = CryptContext(schemas=["bcrypt"], deprecated = "auto")
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 engine = create_engine(DATABASE_URL) 
 
@@ -49,7 +50,7 @@ def get_db():
     try:
         db_conn = engine.raw_connection()
         db_cursor = db_conn.cursor(cursor_factory=RealDictCursor)
-        logging.info("Databse session opened.")
+        logging.info("Database session opened.")
         yield db_cursor
     finally:
         if db_cursor:
@@ -57,7 +58,7 @@ def get_db():
         if db_conn:
             db_conn.commit()
             db_conn.close()
-        logging.info("Databse session closed.")
+        logging.info("Database session closed.")
         
 # --- Helper Functions ---
 
@@ -74,15 +75,15 @@ def health_check(response: Response, db: Connection = Depends(get_db)):
     """
     return {"status": "success", "message": "API is running and database connection is healthy."}
     
-@app.post("/register", status_code=status.HTTP_201_CREATED,response_model= schemas.UserResponse, tags=["Authentication"])
-def register_user(user: schemas.UserCreate, db: Connection = Depends(get_db)):
+@app.post("/register", status_code=status.HTTP_201_CREATED,response_model=schemas.UserResponse, tags=["Authentication"])
+def register_user(user:schemas.UserCreate, db: Connection = Depends(get_db)):
     """
     Registers a new user in the database.
     - Hashes the password for security.
     - Check for duplicate emails.
     """
     # 1. Check if a user with this email already exists
-    logging.info(f"Checking for existing user with email:{user.email}")
+    logging.info(f"Checking for existing user with email: {user.email}")
     db.execute("SELECT id FROM users WHERE email = %s", (user.email,))
     existing_user = db.fetchone()
     
@@ -95,13 +96,13 @@ def register_user(user: schemas.UserCreate, db: Connection = Depends(get_db)):
         
     # 2. Hash the user's password
     hashed_pass = hash_password(user.password)
-    logging.info(f"Password hashed for user:{user.email}")
+    logging.info(f"Password hashed for user: {user.email}")
     
     # 3. Insert new user into the database
     try:
         logging.info(f"Creating new user: {user.email}")
         db.execute(
-            "INSERT INTO users (email, hashed_password) VLAUES (%s, %s) RETURNING id, email, created_at ",
+            "INSERT INTO users (email, hashed_password) VALUES (%s, %s) RETURNING id, email, created_at ",
             (user.email, hashed_pass)
         )
         
@@ -110,7 +111,7 @@ def register_user(user: schemas.UserCreate, db: Connection = Depends(get_db)):
         return new_user_record
     
     except psycopg2.Error as e:
-        logging.error(f"Databse error during user creation: {e}")
+        logging.error(f"Database error during user creation: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Could not create user due to database error."
