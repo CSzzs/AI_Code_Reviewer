@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 import schemas
 from database import get_db_connection
 
-# Load envirnment varibles
+# Load environment varibles
 load_dotenv()
 
 #Loading environment variables
@@ -22,8 +22,8 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 30))
 # Reusing the password context from main.py
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-#OAuth2 scheme to extract the toke from the "Authorizatin : Bearer <token> header"
-oauth2_sheme = OAuth2PasswordBearer(tokenUrl="login")
+#OAuth2 scheme to extract the token from the "Authorization : Bearer <token> header"
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
 def verify_password(plain_password: str, hashed_password:str) -> bool:
     """Verifies a plain password against a hashed_one"""
@@ -42,7 +42,7 @@ def create_access_token(data: dict) -> str:
     return encoded_jwt
 
 def get_current_user(
-    token: str = Depends(oauth2_sheme), db:connection = Depends("get_db_connection")) ->schemas.UserResponse:
+    token: str = Depends(oauth2_scheme), db:connection = Depends(get_db_connection)) ->schemas.UserResponse:
     """
     Dependency function to secure endpoints
     """
