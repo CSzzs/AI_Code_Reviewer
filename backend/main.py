@@ -1,19 +1,13 @@
 import logging
-import os
 
 import psycopg2
-import schemas
-import auth
-from dotenv import load_dotenv
 from fastapi import FastAPI, Response, status, Depends, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
-from psycopg2.extras import RealDictCursor
-from passlib.context import CryptContext
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import Pool
-from sqlalchemy.engine.base import Connection
+from psycopg2.extensions import connection
 
+import auth
+import schemas
+from database import get_db_connection
 
 #---Configuration and setup---
 
@@ -21,62 +15,24 @@ from sqlalchemy.engine.base import Connection
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(levelname)s -%(message)s')
 
-# Load environment variables
-load_dotenv()
-
-# ---Database Connection---
-
-DATABASE_URL = os.getenv("DATABASE_URL")
-if not DATABASE_URL:
-    logging.critical("DATABASE_URL environment variable not set. Application cannot start.")
-
 # Create FastAPI application instance
 app = FastAPI(
     title="AI Code Reviewer API",
     description="The backend service for the AI Code Review and refactoring assistant.",
     version="0.1.0",
 )
-# ---Setup the password hashing---
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-engine = create_engine(DATABASE_URL) 
-
-SessionLocal = sessionmaker(autocommit= False, autoflush=False, bind=engine)
-
-# Dependency to get a DB session for a single request
-def get_db():
-    db_conn = None
-    db_cursor = None
-    try:
-        db_conn = engine.raw_connection()
-        db_cursor = db_conn.cursor(cursor_factory=RealDictCursor)
-        logging.info("Database session opened.")
-        yield db_cursor
-    finally:
-        if db_cursor:
-            db_cursor.close()
-        if db_conn:
-            db_conn.commit()
-            db_conn.close()
-        logging.info("Database session closed.")
-        
-# --- Helper Functions ---
-
-def hash_password(password: str):
-    """Hashes a plain-text password using bcrypt."""
-    return pwd_context.hash(password)      
-        
+          
 # ---API Endpoints---
 @app.get("/", tags=["Health Check"])
-def health_check(response: Response, db: Connection = Depends(get_db)):
+def health_check(response: Response, db: connection = Depends(get_db_connection)):
     """
-    Checks the health of the API. The Depends(get_db) part also implicitly
+    Checks the health of the API. The Depends(get_db_connection) part also implicitly
     checks if the database connection can be established.
     """
     return {"status": "success", "message": "API is running and database connection is healthy."}
     
 @app.post("/register", status_code=status.HTTP_201_CREATED,response_model=schemas.UserResponse, tags=["Authentication"])
-def register_user(user:schemas.UserCreate, db: Connection = Depends(get_db)):
+def register_user(user:schemas.UserCreate, db: connection = Depends(get_db_connection)):
     """
     Registers a new user in the database.
     - Hashes the password for security.
@@ -95,7 +51,7 @@ def register_user(user:schemas.UserCreate, db: Connection = Depends(get_db)):
         )
         
     # 2. Hash the user's password
-    hashed_pass = hash_password(user.password)
+    hashed_pass = auth.hash_password(user.password)
     logging.info(f"Password hashed for user: {user.email}")
     
     # 3. Insert new user into the database
@@ -118,7 +74,8 @@ def register_user(user:schemas.UserCreate, db: Connection = Depends(get_db)):
         )
 
 @app.post("/login", response_model=schemas.Token, tags=["Authentication"])
-def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Connection = Depends(get_db)):
+def login_for_access_token(
+    form_data: OAuth2PasswordRequestForm = Depends(), db: connection = Depends(get_db_connection)):
     """
     Logs a user in by verifying their credentials and returning JWT token.
     """
@@ -144,3 +101,12 @@ def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db:
     
     # 4. Return the token
     return {"access_token": access_token, "token_type": "bearer"}
+
+@app.get("/users/me", response_model= schemas.UserResponse, tags=["Users"])
+def read_users_me(current_user: schemas.UserResponse = Depends(auth.get_current_user)):
+    """
+    Fethches the details fro the currently logged in user.
+    This is the protected endpoint.  A valid JWT Token must be provided
+    """
+    logging.info(f"Fetching details for user ID: {current_user['id']}")
+    return current_user
