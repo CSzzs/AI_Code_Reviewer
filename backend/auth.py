@@ -3,9 +3,10 @@ from datetime import datetime, timedelta, timezone
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from dotenv import load_dotenv
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
+from psycopg2.extensions import connection
+from dotenv import load_dotenv
 
 import schemas
 from database import get_db_connection
@@ -27,6 +28,10 @@ oauth2_sheme = OAuth2PasswordBearer(tokenUrl="login")
 def verify_password(plain_password: str, hashed_password:str) -> bool:
     """Verifies a plain password against a hashed_one"""
     return pwd_context.verify(plain_password, hashed_password)
+
+def hash_password(password: str) -> str:
+    """Hash a plain text password using bcrypt."""
+    return pwd_context.hash(password)
 
 def create_access_token(data: dict) -> str:
     """Creating a new JWT access token."""
@@ -60,7 +65,7 @@ def get_current_user(
         raise credentials_exception
     
     # Fetch user from database
-    db.execute("SELECT * FROM users WHERE id = %s", (user_id,))
+    db.execute("SELECT * FROM users WHERE id = %s", (token_data.user_id,))
     user = db.fetchone()
     
     if user is None:
