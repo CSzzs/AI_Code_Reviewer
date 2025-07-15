@@ -19,4 +19,15 @@ class Token(BaseModel):
     
 class TokenData(BaseModel):
     user_id:int
+
+class CodeSubmission(BaseModel):
+    code:str
     
+class Analysis(BaseModel):
+    id:int
+    submission_id: int
+    analysis_results: dict 
+    model_used: str
+    
+    class Config:
+        from_attributes = True
