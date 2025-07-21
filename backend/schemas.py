@@ -31,3 +31,17 @@ class Analysis(BaseModel):
     
     class Config:
         from_attributes = True
+        
+class CodeSubmission(BaseModel):
+    code:str
+
+class Analysis(BaseModel):
+    id: int
+    submission_id: int
+    analysis_results: dict
+    model_used: str
+    
+    class Config:
+        from_attributes = True
+        
+        

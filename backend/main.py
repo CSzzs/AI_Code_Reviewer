@@ -4,9 +4,11 @@ import psycopg2
 from fastapi import FastAPI, Response, status, Depends, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
 from psycopg2.extensions import connection
+import psycopg2.extras
 
 import auth
 import schemas
+import ai_core
 from database import get_db_connection
 
 #---Configuration and setup---
@@ -110,3 +112,60 @@ def read_users_me(current_user: schemas.UserResponse = Depends(auth.get_current_
     """
     logging.info(f"Fetching details for user ID: {current_user['id']}")
     return current_user
+
+@app.post("/code/analyze", response_model=schemas.Analysis, tags=["Analysis"])
+def analyze_code(
+    submission: schemas.CodeSubmission,
+    db: connection = Depends(get_db_connection),
+    current_user: schemas.UserResponse = Depends(auth.get_current_user)
+):
+    """
+    Saves the submission and analysis results to the database.
+    """
+    user_id = current_user['id']
+    logging.info(f"Received code submission from the user ID: {user_id}")
+    
+    try:
+        # 1. saving the user submitted code to the 'submission' table
+        db.execute(
+            "INSERT INTO submission (user_id, original_code) VALUES (%s, %s) RETURNING id",
+            (user_id, submission.code)
+            
+        )
+        
+        submission_record = db.fetchone()
+        submission_id = submission_record['id']
+        logging.info(f"Code saved with submission ID: {submission_id}")
+        
+        # 2. Call the AI core to get the analysis
+        analysis_results = ai_core.analyze_code_with_ai(submission.code)
+        model_used = "mock_ai_v1.0"
+        
+        # 3. Save the analysis result to the 'analyses' table
+        db.execute(
+            """
+            INSERT INTO analyses (submission_id, analysis_results, model_used)
+            VALUES (%s, %s, %s)
+            RETURNING id, submission_id, analysis_results, model_used
+            """,
+            (submission_id, psycopg2.extras.Json(analysis_results), model_used)
+        )
+        new_analysis_record = db.fetchone()
+        logging.info(f"Analysis saved with analysis id: {new_analysis_record['id']}")
+        
+        # 4. returning the newly created analysis record
+        return new_analysis_record
+    
+    except psycopg2.Error as e:
+        logging.error(f"Database error during the analysis for user {user_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="A database error occurred while processing your request."
+        )
+        
+    except Exception as e:
+        logging.error(f"An unexpected error occured during the analysis for user {user_id}: {e}")
+        raise HTTPException(
+            status_code= status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred."
+        )
